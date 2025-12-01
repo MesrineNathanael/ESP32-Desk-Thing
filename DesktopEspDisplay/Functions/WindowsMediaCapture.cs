@@ -51,7 +51,7 @@ public class WindowsMediaCapture
             }
 
             // Convert and resize into a guaranteed baseline RGB JPEG
-            byte[] resized = ConvertToBaselineJpeg(imageData, 150, 150, 95);
+            byte[] resized = ConvertToBaselineJpeg(imageData, 150, 150, 90);
             byte[] lenBytes = BitConverter.GetBytes(resized.Length);
 
             //combine all bytes to send (lenBytes + resized)

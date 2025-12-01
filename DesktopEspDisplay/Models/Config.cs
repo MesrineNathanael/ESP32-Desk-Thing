@@ -8,13 +8,14 @@ public class Config
     [NonSerialized]
     public static readonly string ConfigFilePath = "config.json";
     
-    public string SerialPortName { get; set; } = "COM4";
+    public string SerialPortName { get; set; } = "COM3";
     public int SerialBaudRate { get; set; } = 921600;
     public uint ImageSendIntervalMs { get; set; } = 10000;
     public uint SoundTitleIntervalMs { get; set; } = 5000;
     public uint CpuTemperatureIntervalMs { get; set; } = 3000;
     public uint GpuTemperatureIntervalMs { get; set; } = 3000;
     public uint RamUsageIntervalMs { get; set; } = 5000;
+    public uint AudioVisualizerIntervalMs { get; set; } = 10;
     
     public static Config LoadConfig()
     {

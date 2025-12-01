@@ -15,16 +15,16 @@ namespace DesktopEspDisplay;
 
 public class AppTrayViewModel : ObservableObject
 {
-
-    private SerialPort? _serialPort;
-    private bool _isServiceStarted = false;
-    private static bool _isSendingImage = false;
+    private readonly SerialPort? _serialPort;
+    private bool _isServiceStarted;
     
     public Config Configuration { get; set; }
 
     public AudioWaveCapture AudioCapture { get; set; } = new AudioWaveCapture();
     
     public MessageFactory MessageFactory { get; set; } = new MessageFactory();
+    
+    public MessageConsumer MessageConsumer { get; set; }
     
     public WindowsMediaCapture WindowsMediaCapture { get; set; } = new WindowsMediaCapture();
     
@@ -61,6 +61,12 @@ public class AppTrayViewModel : ObservableObject
         //Load configuration
         Configuration = Config.LoadConfig();
         
+        //initialize serial port
+        _serialPort = new SerialPort(Configuration.SerialPortName, Configuration.SerialBaudRate);
+
+        //initialize message consumer
+        MessageConsumer = new MessageConsumer(_serialPort, WindowsMediaCapture);
+        
         RunnerThread = Task.Factory.StartNew(Runner);
         AudioCapture.Capture.DataAvailable += CaptureOnDataAvailable;
     }
@@ -74,14 +80,14 @@ public class AppTrayViewModel : ObservableObject
             {
                 return;
             }
-        }catch(Exception ex)
+        }
+        catch(Exception ex)
         {
             //
         }
-
-
+        
         var data = AudioCapture.GetAudio(e);
-        AddMessageToQueue(MessageFactory.CreateMessage(AppConst.SendSoundWaveCommand, 20, string.Join(",", data)));
+        AddMessageToQueue(MessageFactory.CreateMessage(AppConst.SendSoundWaveCommand, Configuration.AudioVisualizerIntervalMs, string.Join(",", data)));
     }
 
     private void Runner()
@@ -114,7 +120,7 @@ public class AppTrayViewModel : ObservableObject
                 var toConsume = MessageQueues.Where(a => a.Timestamp <= now).ToList();
                 foreach (var message in toConsume)
                 {
-                    ConsumeMessage(message);
+                    MessageConsumer.ConsumeMessage(message);
                     MessageQueues.Remove(message);
                     Thread.Sleep(50);
                 }
@@ -173,8 +179,7 @@ public class AppTrayViewModel : ObservableObject
     {
         if (_serialPort is not { IsOpen: true })
         {
-            _serialPort = new SerialPort(Configuration.SerialPortName, Configuration.SerialBaudRate);
-            _serialPort.Open();
+            _serialPort!.Open();
             Thread.Sleep(200);
             
             if (!_serialPort.IsOpen) return;
@@ -199,101 +204,7 @@ public class AppTrayViewModel : ObservableObject
     {
         MessageQueues.Add(message);
     }
-    private TaskCompletionSource<bool> _okReceived;
-    private void ConsumeMessage(Message message)
-    {
-        if (_isSendingImage)
-            return;
 
-        if (message is { Action: AppConst.SendImageCommand, Payload: "" })
-        {
-            Task.Factory.StartNew(() =>
-            {
-                _isSendingImage = true;
-                var albumArt = WindowsMediaCapture.GetAlbumArt();
-                if (albumArt.Result.Item2.Length == 0) return;
-                var ok = false;
-                var tries = 0;
-                while (!ok)
-                {
-                    SendToDevice(AppConst.SendImageCommand, albumArt.Result.Item2, albumArt.Result.Item3);
-
-                    Thread.Sleep(100);
-                    var read = _serialPort!.ReadExisting();
-                    if (read.Contains("[IMG] Image drawn successfully"))
-                    {
-                        ok = true;
-                        Console.WriteLine("OK !");
-                    }
-
-                    //Console.WriteLine(read);
-                    tries++;
-                    if (tries > 3)
-                    {
-                        Console.WriteLine("Failed to receive OK after image send.");
-                        break;
-                    }
-                }
-
-                _isSendingImage = false;
-            });
-        }
-        else if (message is { Action: AppConst.SendSoundTitleCommand, Payload: "" })
-        {
-            Task.Factory.StartNew(() =>
-            {
-                var albumArt = WindowsMediaCapture.GetAlbumArt();
-                if (albumArt.Result.Item1 != string.Empty)
-                {
-                    var title = albumArt.Result.Item1.Length > 35 ? albumArt.Result.Item1[..35] : albumArt.Result.Item1;
-                    SendToDevice(AppConst.SendSoundTitleCommand, title);
-                }
-            });
-        }
-        else
-        {
-            SendToDevice(message.Action, message.Payload ?? "");
-        }
-    }
-    
-    private void SendToDevice(string action, string data)
-    {
-        if (ConnectedToDevice)
-        {
-            _serialPort?.WriteLine($"{action}{data}\n");
-        }
-    }
-
-    private void SendToDevice(string action, byte[] header, byte[] data)
-    {
-        if (ConnectedToDevice)
-        {
-            _serialPort?.Write(action);
-            _serialPort?.Write(header, 0, 4);
-            _serialPort?.Write(data, 0, data.Length);
-            _serialPort?.Write("\n");
-        }
-    }
-    
-    private MainWindow? GetMainWindow()
-    {
-        return Application.Current.MainWindow as MainWindow;
-    }
-
-    public ICommand ShowWindowCommand
-    {
-        get
-        {
-            return new RelayCommand(() =>
-            {
-                Task.Factory.StartNew(() =>
-                {
-                    MessageBox.Show("oui", "oui");
-                });
-            });
-        }
-    }
-    
     public ICommand EditConfigCommand
     {
         get
